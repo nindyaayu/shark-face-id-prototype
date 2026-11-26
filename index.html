@@ -161,19 +161,104 @@ async function recognize(){
   else{msg('faceStatus','WAJAH BELUM COCOK. Jarak terbaik '+bestDistance.toFixed(3)+'. Gunakan jalur QR alternatif untuk pengujian.','bad');}
  }catch(e){msg('faceStatus',e.message,'bad');}
 }
-async function startQr(){
- try{
-  if(qrScanner){await stopQr();}
-  qrScanner=new Html5Qrcode('reader');
-  await qrScanner.start({facingMode:'environment'},{fps:8,qrbox:{width:230,height:230}},async text=>{
-   try{await qrScanner.stop();const r=await jsonp(apiUrl('qr',{token:text}));if(!r.ok)throw Error(r.error);
-    await postPayload({action:'log',requestId:crypto.randomUUID(),apiKey:cfg().key,employeeId:r.employee.id,event:'QR_ONLY',result:'VALID',detail:'QR alternatif prototype'});
-    msg('qrStatus','QR alternatif valid untuk '+r.employee.name+' ('+r.employee.id+'). Riwayat QR_ONLY tersimpan.','good');
-   }catch(e){msg('qrStatus',e.message,'bad');}
-  });
-  msg('qrStatus','Kamera QR aktif. Arahkan ke QR penguji.');
- }catch(e){msg('qrStatus','QR gagal dibuka: '+e.message,'bad');}
+
+async function startQr() {
+  try {
+    msg('qrStatus', 'Menyiapkan kamera QR...');
+
+    // Pastikan library QR tersedia
+    if (typeof Html5Qrcode === 'undefined') {
+      throw new Error(
+        'Library Html5Qrcode belum termuat. Periksa koneksi internet.'
+      );
+    }
+
+    // Tutup scanner QR sebelumnya
+    if (qrScanner) {
+      await stopQr();
+    }
+
+    // Lepaskan kamera depan terlebih dahulu
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    const video = document.getElementById('video');
+    video.srcObject = null;
+
+    // Beri waktu perangkat melepas kamera
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    qrScanner = new Html5Qrcode('reader');
+
+    await qrScanner.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: { width: 230, height: 230 },
+        aspectRatio: 1
+      },
+      async (decodedText) => {
+        try {
+          await stopQr();
+
+          msg('qrStatus', 'Memvalidasi QR Code...');
+
+          const result = await jsonp(
+            apiUrl('qr', { token: decodedText })
+          );
+
+          if (!result.ok) {
+            throw new Error(result.error);
+          }
+
+          msg(
+            'qrStatus',
+            'QR VALID: ' +
+            result.employee.name +
+            ' (' + result.employee.id +
+            '). Metode: QR_ONLY',
+            'good'
+          );
+
+        } catch (error) {
+          msg('qrStatus', String(error), 'bad');
+        }
+      }
+    );
+
+    msg(
+      'qrStatus',
+      'Kamera QR aktif. Arahkan QR Code ke kamera belakang.',
+      'good'
+    );
+
+  } catch (error) {
+    msg(
+      'qrStatus',
+      'QR gagal dibuka: ' +
+      (error.message || String(error)),
+      'bad'
+    );
+  }
 }
+
+async function stopQr() {
+  if (qrScanner) {
+    try {
+      if (qrScanner.isScanning) {
+        await qrScanner.stop();
+      }
+      qrScanner.clear();
+    } catch (error) {
+      console.log('Penutupan QR:', error);
+    }
+
+    qrScanner = null;
+  }
+}
+
 async function stopQr(){if(qrScanner){try{await qrScanner.stop();qrScanner.clear();}catch(e){}qrScanner=null;}}
 window.addEventListener('load',loadConfig);
 </script></body></html>
